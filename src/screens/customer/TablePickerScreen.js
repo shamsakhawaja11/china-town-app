@@ -243,10 +243,6 @@ function Legend({ areas }) {
                 <Box fill={colors.primary} border={colors.primary} />
                 <Txt variant="small">Selected</Txt>
             </View>
-            <View style={styles.legendItem}>
-                <Box fill={colors.surfaceAlt} />
-                <Txt variant="small">Booked</Txt>
-            </View>
             {areas.map((a) => (
                 <View key={a.id} style={styles.legendItem}>
                     <Box border={areaStyle(a.name).color} />
@@ -312,10 +308,14 @@ export function TablePickerScreen({ route, navigation }) {
     }, [avail.data]);
 
     const source = isBooking ? avail : live;
-    const tables = useMemo(() => {
-        const list = isBooking ? (avail.data?.tables ?? []) : (live.data?.tables ?? []);
-        return [...list].sort((a, b) => tableNo(a) - tableNo(b));
-    }, [isBooking, avail.data, live.data]);
+    const allTables = isBooking ? (avail.data?.tables ?? []) : (live.data?.tables ?? []);
+    const tables = useMemo(
+        () => allTables.filter((t) => t.isAvailable).sort((a, b) => tableNo(a) - tableNo(b)),
+        [allTables],
+    );
+    const openSlots = useMemo(() => allSlots.filter(slotOk), [allSlots, dayIdx]);
+    const slotIndex = slot ? openSlots.indexOf(slot) : -1;
+    const slotLabel = (sl) => time(new Date(2000, 0, 1, Number(sl.slice(0, 2)), Number(sl.slice(3, 5))));
 
     const areas = useMemo(() => {
         const map = new Map();
@@ -627,6 +627,33 @@ export function TablePickerScreen({ route, navigation }) {
                     </Card>
                 </Animated.View>
 
+                {isBooking && openSlots.length ? (
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={{ marginHorizontal: -20, flexGrow: 0 }}
+                        contentContainerStyle={{ gap: 8, paddingHorizontal: 20 }}
+                        contentOffset={{ x: Math.max(0, slotIndex * 92 - 120), y: 0 }}
+                    >
+                        {openSlots.map((sl) => {
+                            const active = sl === slot;
+                            return (
+                                <PressableScale
+                                    key={sl}
+                                    haptic
+                                    onPress={() => setSlot(sl)}
+                                    style={[styles.timeChip, active && styles.timeChipActive]}
+                                >
+                                    <Icon name="clock-outline" size={14} color={active ? colors.white : colors.textMuted} />
+                                    <Txt variant="smallMedium" color={active ? colors.white : colors.text} style={{ fontWeight: '700' }}>
+                                        {slotLabel(sl)}
+                                    </Txt>
+                                </PressableScale>
+                            );
+                        })}
+                    </ScrollView>
+                ) : null}
+
                 {areas.length > 0 ? (
                     <ScrollView
                         horizontal
@@ -659,8 +686,24 @@ export function TablePickerScreen({ route, navigation }) {
                     <Skeleton height={380} r={22} />
                 ) : source.isError ? (
                     <EmptyState tone="error" title="Couldn't load tables" message={errorMessage(source.error)} />
-                ) : tables.length === 0 ? (
+                ) : allTables.length === 0 ? (
                     <EmptyState title="No tables yet" message="The restaurant hasn't set up its floor plan." />
+                ) : tables.length === 0 ? (
+                    isBooking ? (
+                        <EmptyState
+                            icon="calendar-remove"
+                            title={`Fully booked at ${slot ? slotLabel(slot) : 'this time'}`}
+                            message="Every table is taken at this time. Pick another time above."
+                        />
+                    ) : (
+                        <EmptyState
+                            icon="table-cancel"
+                            title="All tables are busy right now"
+                            message="Try again in a few minutes, or book a table for later."
+                            action="Book a table"
+                            onAction={() => navigation.replace('TablePicker', { mode: 'booking' })}
+                        />
+                    )
                 ) : (
                     <View style={styles.floor}>
                         <View style={{ gap: 18 }} onLayout={(e) => setGridWidth(e.nativeEvent.layout.width)}>
@@ -705,7 +748,7 @@ export function TablePickerScreen({ route, navigation }) {
 
                 {isBooking ? (
                     <Txt variant="small" style={{ textAlign: 'center' }}>
-                        {freeCount} of {tables.length} tables free · tap tables to join them
+                        {tables.length} {tables.length === 1 ? 'table' : 'tables'} free at {slot ? slotLabel(slot) : '--'} · tap tables to join them
                     </Txt>
                 ) : (
                     <Txt variant="small" style={{ textAlign: 'center' }}>
@@ -839,6 +882,19 @@ const styles = StyleSheet.create({
     legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     legendBox: { width: 14, height: 14, borderRadius: 4, borderWidth: 1.5 },
     selRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+    timeChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        width: 84,
+        height: 38,
+        justifyContent: 'center',
+        borderRadius: radius.pill,
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    timeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
     fit: { borderRadius: radius.lg, padding: 12, gap: 10 },
     suggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingLeft: 30 },
     suggest: {
